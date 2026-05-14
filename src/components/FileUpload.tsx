@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Film, FolderOpen } from "lucide-react";
+import { Film, FolderOpen, AlertCircle } from "lucide-react";
 import LottiePlayer from "./LottiePlayer";
 import uploadAnim from "@/lib/lottie/upload.json";
 
@@ -16,20 +16,49 @@ function fmt(bytes: number) {
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Centralized validation — used by both the click handler and the drop handler.
+// Returns an error string if invalid, or null if the file is acceptable.
+function validateVideoFile(file: File): string | null {
+  // file.type can be an empty string on some browsers when a file is
+  // dragged in from certain sources (e.g. file managers on Linux/Windows).
+  // Treat an empty MIME type as invalid rather than letting it slip through.
+  if (!file.type) {
+    return "Could not determine file type. Please select a video file.";
+  }
+  if (!file.type.startsWith("video/")) {
+    return `"${file.name}" is not a video file. Please upload an MP4, MOV, AVI, or WebM.`;
+  }
+  return null;
+}
+
 export default function FileUpload({ onFileSelect, currentFile }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // NEW: error state so the user sees exactly why their file was rejected.
+  const [error, setError] = useState<string | null>(null);
 
   const handleFile = (file: File) => {
-    if (!file.type.startsWith("video/")) return;
+    const validationError = validateVideoFile(file);
+    if (validationError) {
+      // Surface the error instead of silently returning.
+      setError(validationError);
+      return;
+    }
+    setError(null);
     onFileSelect(file);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
+
+    // Guard against an empty transfer (e.g. dragging text or a link).
     const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (!file) return;
+
+    // Validation now goes through the same shared validateVideoFile path,
+    // so the drop handler is no longer weaker than the click handler.
+    handleFile(file);
   };
 
   if (currentFile) {
@@ -64,48 +93,60 @@ export default function FileUpload({ onFileSelect, currentFile }: Props) {
   }
 
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
-      onClick={() => inputRef.current?.click()}
-      className={`
-        group flex flex-col items-center justify-center gap-4 py-12 px-6
-        border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200
-        ${dragging
-          ? "border-film-500 bg-film-50 scale-[1.01]"
-          : "border-[var(--border)] bg-[var(--bg)] hover:border-film-400 hover:bg-film-50/40"
-        }
-      `}
-    >
-      <div className="w-20 h-20 opacity-80 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-200">
-        <LottiePlayer animationData={uploadAnim} loop autoplay />
+    <div className="flex flex-col gap-2">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`
+          group flex flex-col items-center justify-center gap-4 py-12 px-6
+          border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200
+          ${dragging
+            ? "border-film-500 bg-film-50 scale-[1.01]"
+            : error
+              ? "border-red-400 bg-red-50/40 hover:border-red-400"
+              : "border-[var(--border)] bg-[var(--bg)] hover:border-film-400 hover:bg-film-50/40"
+          }
+        `}
+      >
+        <div className="w-20 h-20 opacity-80 group-hover:opacity-100 transition-opacity group-hover:scale-110 duration-200">
+          <LottiePlayer animationData={uploadAnim} loop autoplay />
+        </div>
+
+        <div className="text-center">
+          <p className="font-heading font-semibold text-[var(--text)] text-base">
+            Drop a video file here
+          </p>
+          <p className="text-sm text-[var(--muted)] mt-1">
+            or click to browse
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm font-heading font-medium text-[var(--muted)]">
+          <FolderOpen size={14} />
+          MP4 / MOV / AVI / WebM
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+          }}
+        />
       </div>
 
-      <div className="text-center">
-        <p className="font-heading font-semibold text-[var(--text)] text-base">
-          Drop a video file here
-        </p>
-        <p className="text-sm text-[var(--muted)] mt-1">
-          or click to browse
-        </p>
-      </div>
-
-      <div className="flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm font-heading font-medium text-[var(--muted)]">
-        <FolderOpen size={14} />
-        MP4 / MOV / AVI / WebM
-      </div>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="video/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
-        }}
-      />
+      {/* Error banner — only rendered when there is an active error message. */}
+      {error && (
+        <div className="flex items-start gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertCircle size={15} className="shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }
