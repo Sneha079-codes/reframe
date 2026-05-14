@@ -16,12 +16,28 @@ function fmt(bytes: number) {
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function validateVideoFile(file:File):string | null {
+  if(!file.type){
+    return "Could not determine file type.Please select a video file.";
+  }
+  if(!file.type.startsWith("video/")){
+    return `"${file.name}" is not a video file. Please upload an MP4, MOV, AVI, or WebM.`;
+  }
+  return null;
+}
+
 export default function FileUpload({ onFileSelect, currentFile }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("video/")) return;
+  const[error,setError] = useState<string | null>(null);
+  
+  const handleFile = (file:File) => {
+    const validationError = validateVideoFile (file);
+    if(validationError) {
+      setError(validationError);
+      return;
+    }
+    setError(null);
     onFileSelect(file);
   };
 
